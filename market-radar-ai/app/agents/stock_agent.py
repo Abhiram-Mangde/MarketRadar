@@ -4,6 +4,8 @@ import asyncio
 import re
 from app.market.public_api import fetch_stock_data
 from app.alerts.scheduler import AlertScheduler
+from app.analysis.technical import analyze_technical
+
 
 class StockAgent:
     """
@@ -56,13 +58,17 @@ class StockAgent:
         """
         Converts stock_data dict into human-readable string.
         """
-        if not stock_data:
-            return "Stock data not found. Please check the symbol."
+        tech = analyze_technical(symbol)
 
-        return (
-            f"{stock_data['symbol']} Analysis:\n"
-            f"- Price: {stock_data['price']}\n"
-            f"- Trend: {stock_data['trend']}\n"
-            f"- RSI: {stock_data['rsi']}\n"
-            f"- Recommendation: {stock_data['recommendation']}"
-        )
+    if tech.get("status") == "INSUFFICIENT_DATA":
+        return tech["message"]
+
+    return (
+        f"{symbol} Technical Analysis:\n"
+        f"- Price: {tech['price']}\n"
+        f"- RSI: {tech['rsi']}\n"
+        f"- SMA(20): {tech['sma_20']}\n"
+        f"- SMA(50): {tech['sma_50']}\n"
+        f"- Recommendation: {tech['recommendation']}\n"
+        f"- Reasons: {', '.join(tech['reasons'])}"
+    )
