@@ -1,3 +1,11 @@
+"""
+StockAgent module.
+
+Handles user commands related to stocks, 
+provides technical/fundamental analysis,
+and manages alerts/watchlist.
+"""
+
 import re
 from app.analysis.technical import analyze_technical
 from app.alerts.scheduler import AlertScheduler
