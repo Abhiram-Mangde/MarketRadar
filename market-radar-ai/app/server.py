@@ -3,6 +3,9 @@
 import asyncio
 from app.config import TCP_HOST, TCP_PORT, MAX_CLIENTS, DEBUG
 from app.agents.stock_agent import StockAgent
+from app.storage.models import init_db
+
+init_db()
 
 # Placeholder for StockAgent (we’ll implement next)
 class StockAgent:
