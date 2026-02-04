@@ -1,63 +1,30 @@
-from app.storage.database import get_connection
-from app.market.public_api import fetch_stock_data
-import asyncio
+"""
+Alert Scheduler.
 
-class AlertScheduler:
+Periodically checks watchlist
+and evaluates alerts.
+"""
 
-    def __init__(self):
-        self.loop = asyncio.get_event_loop()
-        self.loop.create_task(self._alert_loop())
+import time
 
-    def add_alert(self, symbol: str, target_price: float):
-        conn = get_connection()
-        cursor = conn.cursor()
+from app.alerts.watchlist import init_watchlist, get_watchlist
+from app.alerts.alert_engine import evaluate_alerts
 
-        cursor.execute(
-            "INSERT INTO watchlist (symbol, target_price) VALUES (?, ?)",
-            (symbol, target_price)
-        )
 
-        conn.commit()
-        conn.close()
+def run_scheduler(interval: int = 60) -> None:
+    """
+    Run alert scheduler loop.
 
-    def show_watchlist(self):
-        conn = get_connection()
-        cursor = conn.cursor()
+    Args:
+        interval (int): Polling interval in seconds
+    """
+    init_watchlist()
 
-        cursor.execute("SELECT symbol, target_price, triggered FROM watchlist")
-        rows = cursor.fetchall()
-        conn.close()
+    while True:
+        watchlist = get_watchlist()
+        alerts = evaluate_alerts(watchlist)
 
-        if not rows:
-            return "Your watchlist is empty."
+        for alert in alerts:
+            print(alert)
 
-        return "\n".join(
-            f"{r[0]} | Target: {r[1]} | {'Triggered' if r[2] else 'Pending'}"
-            for r in rows
-        )
-
-    async def _alert_loop(self):
-        while True:
-            conn = get_connection()
-            cursor = conn.cursor()
-
-            cursor.execute(
-                "SELECT symbol, target_price FROM watchlist WHERE triggered = 0"
-            )
-            rows = cursor.fetchall()
-            conn.close()
-
-            for symbol, target in rows:
-                stock = await fetch_stock_data(symbol)
-                if stock["price"] >= target:
-                    print(f"[ALERT] {symbol} reached {target}")
-                    conn = get_connection()
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "UPDATE watchlist SET triggered = 1 WHERE symbol = ? AND target_price = ?",
-                        (symbol, target)
-                    )
-                    conn.commit()
-                    conn.close()
-
-            await asyncio.sleep(60)
+        time.sleep(interval)
