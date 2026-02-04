@@ -1,31 +1,48 @@
-from app.storage.price_repository import get_recent_prices
-from app.analysis.indicators import sma, rsi
-from app.analysis.decision import technical_score
+"""
+Technical Analysis Engine.
 
-def analyze_technical(symbol: str) -> dict:
-    prices = get_recent_prices(symbol, limit=60)
+Combines price data and indicators
+to produce trading insights.
+"""
 
-    if len(prices) < 20:
-        return {
-            "status": "INSUFFICIENT_DATA",
-            "message": "Not enough historical data yet."
-        }
+from typing import Dict
 
-    current_price = prices[-1]
-    sma_20 = sma(prices, 20)
-    sma_50 = sma(prices, 50)
-    rsi_value = rsi(prices)
+from app.analysis.price_series import get_price_series
+from app.analysis.indicators import (
+    simple_moving_average,
+    exponential_moving_average,
+    relative_strength_index,
+)
 
-    recommendation, score, reasons = technical_score(
-        current_price, sma_20, sma_50, rsi_value
-    )
+
+def analyze_technical(symbol: str) -> Dict:
+    """
+    Perform technical analysis for a stock.
+
+    Args:
+        symbol (str): Stock symbol
+
+    Returns:
+        Dict: Technical analysis summary
+    """
+    prices = get_price_series(symbol)
+
+    sma_20 = simple_moving_average(prices, 20)
+    ema_20 = exponential_moving_average(prices, 20)
+    rsi = relative_strength_index(prices)
+
+    signal = "Neutral"
+    if rsi < 30:
+        signal = "Oversold (Buy Zone)"
+    elif rsi > 70:
+        signal = "Overbought (Caution)"
 
     return {
-        "price": current_price,
-        "sma_20": sma_20,
-        "sma_50": sma_50,
-        "rsi": rsi_value,
-        "score": score,
-        "recommendation": recommendation,
-        "reasons": reasons
+        "symbol": symbol.upper(),
+        "indicators": {
+            "sma_20": sma_20,
+            "ema_20": ema_20,
+            "rsi": rsi,
+        },
+        "signal": signal,
     }
