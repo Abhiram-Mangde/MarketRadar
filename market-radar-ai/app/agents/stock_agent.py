@@ -1,74 +1,103 @@
-# app/agents/stock_agent.py
+"""
+StockAgent for MarketRadar-AI.
+
+Handles natural language stock commands such as:
+- Analyze <STOCK>
+- Monitor <STOCK> at <PRICE>
+- Show my watchlist
+"""
 
 import asyncio
 import re
+
 from app.market.public_api import fetch_stock_data
 from app.alerts.scheduler import AlertScheduler
 from app.analysis.technical import analyze_technical
-
+from app.analysis.fundamental import analyze_fundamentals
+from app.ai.explanation_engine import explain_fundamentals
+from app.nlu.command_parser import parse_command
+from app.alerts.monitor import StockMonitor
 
 class StockAgent:
     """
-    Stock Agent for MarketRadar-AI
-    - Understands commands like:
-        - Analyze <Stock>
-        - Monitor <Stock> at <price>
-        - Show my watchlist
-    - Returns fundamental & technical insights
-    - Adds alerts to scheduler
+    AI-powered stock agent that parses commands,
+    performs analysis, and manages alerts.
     """
 
     def __init__(self):
         self.alert_scheduler = AlertScheduler()
+        self.watchlist = {}
+        self.monitor = StockMonitor(self.watchlist)
+
+        # Start the monitoring loop asynchronously
+        asyncio.create_task(self.monitor.start())
 
     async def process(self, message: str) -> str:
-        msg = message.strip().lower()
+        """
+        Process user input and return a response.
 
-        # Command: Analyze <Stock>
-        analyze_match = re.match(r"(analyze|show analysis) (\w+)", msg)
-        if analyze_match:
-            symbol = analyze_match.group(2).upper()
+        Args:
+            message (str): User command
+
+        Returns:
+            str: Agent response
+        """
+        command = parse_command(message)
+
+        if not command:
+            return "Sorry, I didn't understand. Type 'help' for commands."
+
+        action = command.get("action")
+
+        if action == "ANALYZE":
+            symbol = command["symbol"]
             stock_data = await fetch_stock_data(symbol)
-            return self._format_analysis(stock_data)
+            return self._format_analysis(symbol, stock_data)
 
-        # Command: Monitor <Stock> at <Price>
-        monitor_match = re.match(r"(monitor|watch) (\w+) at (\d+(\.\d+)?)", msg)
-        if monitor_match:
-            symbol = monitor_match.group(2).upper()
-            target_price = float(monitor_match.group(3))
-            self.alert_scheduler.add_alert(symbol, target_price)
-            return f"{symbol} added to your watchlist at target price {target_price}."
+        if action == "MONITOR":
+            symbol = command["symbol"]
+            target_price = command["target_price"]
+            self.watchlist[symbol] = target_price
+            return f"{symbol} added to watchlist at ₹{target_price}."
 
-        # Command: Show watchlist
-        if "watchlist" in msg:
-            return self.alert_scheduler.show_watchlist()
+        if action == "SHOW_WATCHLIST":
+            if not self.watchlist:
+                return "Your watchlist is empty."
+            return "\n".join(
+                f"{s} → ₹{p}" for s, p in self.watchlist.items()
+            )
 
-        # Help fallback
-        if "help" in msg:
+        if action == "HELP":
             return (
-                "Commands:\n"
-                "- Analyze <Stock> : Get fundamental & technical analysis\n"
-                "- Monitor <Stock> at <Price> : Add stock to watchlist\n"
-                "- Show my watchlist : See current alerts"
+                "Available commands:\n"
+                "- Analyze <STOCK>\n"
+                "- Monitor <STOCK> at <PRICE>\n"
+                "- Show my watchlist"
             )
 
         return "Sorry, I didn't understand. Type 'help' for commands."
 
-    def _format_analysis(self, stock_data: dict) -> str:
+    def _format_analysis(self, symbol: str, stock_data: dict) -> str:
         """
-        Converts stock_data dict into human-readable string.
+        Combine fundamental and technical analysis
+        into a human-readable response.
         """
-        tech = analyze_technical(symbol)
+        fundamentals = analyze_fundamentals(symbol)
+        technicals = analyze_technical(symbol)
 
-    if tech.get("status") == "INSUFFICIENT_DATA":
-        return tech["message"]
+        fundamental_text = explain_fundamentals(fundamentals)
 
-    return (
-        f"{symbol} Technical Analysis:\n"
-        f"- Price: {tech['price']}\n"
-        f"- RSI: {tech['rsi']}\n"
-        f"- SMA(20): {tech['sma_20']}\n"
-        f"- SMA(50): {tech['sma_50']}\n"
-        f"- Recommendation: {tech['recommendation']}\n"
-        f"- Reasons: {', '.join(tech['reasons'])}"
-    )
+        if technicals.get("status") == "INSUFFICIENT_DATA":
+            technical_text = technicals["message"]
+        else:
+            technical_text = (
+                f"{symbol} Technical Analysis:\n"
+                f"- Price: ₹{technicals['price']}\n"
+                f"- RSI: {technicals['rsi']}\n"
+                f"- SMA(20): {technicals['sma_20']}\n"
+                f"- SMA(50): {technicals['sma_50']}\n"
+                f"- Recommendation: {technicals['recommendation']}\n"
+                f"- Reasons: {', '.join(technicals['reasons'])}"
+            )
+
+        return f"{fundamental_text}\n\n{technical_text}"
